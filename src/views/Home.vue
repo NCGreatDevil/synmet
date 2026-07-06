@@ -1,14 +1,3 @@
-<script setup lang="ts">
-import { ref } from 'vue'
-
-const count = ref(0)
-const message = ref('Hello Vue 3 + TypeScript + Vite')
-
-function increment() {
-  count.value++
-}
-</script>
-
 <template>
   <div class="container">
     <h1>{{ message }}</h1>
@@ -16,12 +5,47 @@ function increment() {
       <p>Count: {{ count }}</p>
       <button @click="increment">Increment</button>
     </div>
+    
+    <div class="auth-info" v-if="authStore.isAuthenticated">
+      <p>欢迎, {{ authStore.currentUser?.name }}</p>
+      <n-button text type="error" @click="handleLogout">退出登录</n-button>
+    </div>
+    <div class="auth-links" v-else>
+      <router-link to="/login" class="link-btn">登录</router-link>
+      <router-link to="/register" class="link-btn">注册</router-link>
+    </div>
+
     <div class="test-link">
       <router-link to="/square" class="link-btn">进入社交关系图谱</router-link>
       <router-link to="/test-mob" class="link-btn">进入移动端社交图谱</router-link>
+      <router-link v-if="authStore.isAdmin" to="/users" class="link-btn">用户管理</router-link>
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+import { ref } from 'vue'
+import { useMessage } from 'naive-ui'
+import { useAuthStore } from '@/stores/auth'
+
+const message = ref('Hello Vue 3 + TypeScript + Vite')
+const count = ref(0)
+const messageService = useMessage()
+const authStore = useAuthStore()
+
+function increment() {
+  count.value++
+}
+
+const handleLogout = async () => {
+  try {
+    await authStore.logout()
+    messageService.success('退出成功')
+  } catch {
+    messageService.error('退出失败')
+  }
+}
+</script>
 
 <style scoped>
 .container {
@@ -55,6 +79,11 @@ button:hover {
   background-color: #e0e0e0;
 }
 
+.auth-info,
+.auth-links {
+  margin-top: 2rem;
+}
+
 .test-link {
   margin-top: 2rem;
 }
@@ -68,6 +97,7 @@ button:hover {
   border-radius: 8px;
   text-decoration: none;
   transition: background-color 0.2s;
+  margin: 0 0.5rem;
 }
 
 .link-btn:hover {

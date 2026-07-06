@@ -25,6 +25,7 @@
     "@vicons/utils": "^0.1.4",
     "@vitejs/plugin-vue": "^6.0.7",
     "naive-ui": "^2.44.1",
+    "ts-node": "^10.9.2",
     "typescript": "~5.7.2",
     "vite": "^8.0.16",
     "vue-tsc": "^2.2.0"

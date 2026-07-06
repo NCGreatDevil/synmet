@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `bio` VARCHAR(500) NULL COMMENT '个人简介',
   `avatar` VARCHAR(255) NULL COMMENT '头像URL',
   `role` TINYINT NOT NULL DEFAULT 0 COMMENT '角色：0-普通用户，1-红娘用户',
+  `is_admin` TINYINT NOT NULL DEFAULT 0 COMMENT '是否管理员：0-否，1-是（管理员可访问用户管理页面并管理所有用户）',
   `status` TINYINT NOT NULL DEFAULT 1 COMMENT '用户状态：0-禁用，1-正常',
   `is_online` TINYINT NOT NULL DEFAULT 0 COMMENT '在线状态：0-离线，1-在线',
   `current_partner_id` BIGINT NULL COMMENT '当前交往对象ID（普通用户专属，最多一个）',
