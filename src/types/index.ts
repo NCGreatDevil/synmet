@@ -9,6 +9,7 @@ export interface UserData {
   status: UserStatus
   interaction: number
   popularity: number
+  gender?: number
 }
 
 export interface EditForm {

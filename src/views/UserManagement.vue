@@ -1,15 +1,34 @@
 <template>
   <div class="min-h-screen bg-gray-50 p-6">
     <div class="max-w-7xl mx-auto">
+      <!-- 面包屑导航 -->
+      <n-breadcrumb class="mb-4">
+        <n-breadcrumb-item>
+          <router-link to="/">首页</router-link>
+        </n-breadcrumb-item>
+        <n-breadcrumb-item>用户管理</n-breadcrumb-item>
+      </n-breadcrumb>
+
       <!-- 顶部栏：标题 + 当前用户信息 -->
       <div class="flex items-center justify-between mb-6">
         <h1 class="text-2xl font-bold text-gray-800">用户管理</h1>
         <n-dropdown :options="userDropdownOptions" @select="handleUserMenuSelect">
           <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
-            <n-avatar round :size="36" :src="authStore.currentUser?.avatar || undefined">
-              {{ authStore.currentUser?.name?.charAt(0) || 'U' }}
-            </n-avatar>
-            <span class="text-gray-700 font-medium">{{ authStore.currentUser?.name || '用户' }}</span>
+            <img
+              v-if="getAvatarUrl(authStore.currentUser)"
+              :src="getAvatarUrl(authStore.currentUser)"
+              class="rounded-full"
+              style="width: 36px; height: 36px; object-fit: cover;"
+              @error="(e: Event) => { (e.target as HTMLImageElement).style.display = 'none' }"
+            />
+            <div
+              v-else
+              class="rounded-full bg-gray-300 flex items-center justify-center"
+              style="width: 36px; height: 36px;"
+            >
+              <span class="text-sm text-gray-600">{{ authStore.currentUser?.username?.charAt(0)?.toUpperCase() || 'U' }}</span>
+            </div>
+            <span class="text-gray-700 font-medium">{{ authStore.currentUser?.username || '用户' }}</span>
           </div>
         </n-dropdown>
       </div>
@@ -82,8 +101,8 @@
             </n-form-item>
           </n-gi>
           <n-gi>
-            <n-form-item label="用户名" path="name">
-              <n-input v-model:value="form.name" placeholder="请输入用户名" />
+            <n-form-item label="用户名" path="username">
+              <n-input v-model:value="form.username" placeholder="请输入用户名" />
             </n-form-item>
           </n-gi>
           <n-gi>
@@ -124,6 +143,13 @@
             </n-form-item>
           </n-gi>
         </n-grid>
+        <!-- 编辑时显示时间信息 -->
+        <div v-if="editingId && editingUser" class="mt-4 pt-4 border-t border-gray-200">
+          <div class="flex gap-8 text-sm text-gray-500">
+            <span>创建时间: {{ formatTime(editingUser.created_at) }}</span>
+            <span>修改时间: {{ formatTime(editingUser.updated_at) }}</span>
+          </div>
+        </div>
       </n-form>
       <template #action>
         <n-button @click="showCreateModal = false">取消</n-button>
@@ -141,7 +167,11 @@ import type { FormInst, FormItemRule, FormRules, DropdownOption } from 'naive-ui
 import { useMessage, useDialog, NTag, NSpace, NButton, NCheckbox, NGrid, NGi, NDropdown, NAvatar } from 'naive-ui'
 import { useAuthStore, type User } from '@/stores/auth'
 import { useRouter } from 'vue-router'
-import pb from '@/lib/pocketbase'
+import pb, { getUserAvatarUrl, getDefaultAvatar } from '@/lib/pocketbase'
+
+const getAvatarUrl = (user: { id: string; avatar: string; gender?: number } | null | undefined) => {
+  return getUserAvatarUrl(user)
+}
 
 const message = useMessage()
 const dialog = useDialog()
@@ -150,7 +180,7 @@ const router = useRouter()
 
 // 用户下拉菜单选项
 const userDropdownOptions = computed<DropdownOption[]>(() => [
-  { label: `${authStore.currentUser?.name || '用户'} (${authStore.currentUser?.email || ''})`, key: 'info', disabled: true },
+  { label: `${authStore.currentUser?.username || '用户'} (${authStore.currentUser?.email || ''})`, key: 'info', disabled: true },
   { type: 'divider', key: 'd1' },
   { label: '退出登录', key: 'logout' }
 ])
@@ -176,6 +206,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const showCreateModal = ref(false)
 const editingId = ref<string | null>(null)
+const editingUser = ref<User | null>(null)
 const searchKeyword = ref('')
 const roleFilter = ref('')
 const statusFilter = ref('')
@@ -207,7 +238,7 @@ const statusOptions = [
 const columns = [
   { title: 'ID', key: 'id', width: 100 },
   { title: '邮箱', key: 'email' },
-  { title: '用户名', key: 'name' },
+  { title: '用户名', key: 'username' },
   {
     title: '性别', key: 'gender',
     render: (row: User) => genderMap[row.gender] || '未知'
@@ -229,7 +260,10 @@ const columns = [
     title: '在线状态', key: 'is_online',
     render: (row: User) => h(NTag, { type: row.is_online === 1 ? 'success' : 'default' }, () => row.is_online === 1 ? '在线' : '离线')
   },
-  { title: '创建时间', key: 'created' },
+  {
+    title: '修改时间', key: 'updated_at', width: 180,
+    render: (row: User) => row.updated_at ? new Date(row.updated_at).toLocaleString('zh-CN') : '-'
+  },
   {
     title: '操作', key: 'actions', width: 200,
     render: (row: User) => h(NSpace, null, () => [
@@ -246,7 +280,7 @@ const columns = [
 
 const form = reactive({
   email: '',
-  name: '',
+  username: '',
   password: '',
   gender: '0',
   role: '0',
@@ -269,7 +303,7 @@ const rules = computed<FormRules>(() => ({
       trigger: ['input', 'blur']
     }
   ],
-  name: [
+  username: [
     { required: true, message: '请输入用户名', trigger: ['input', 'blur'] }
   ],
   password: [
@@ -310,7 +344,7 @@ const rules = computed<FormRules>(() => ({
 const buildFilter = () => {
   const filters: string[] = []
   if (searchKeyword.value) {
-    filters.push(`(email ~ "${searchKeyword.value}" || name ~ "${searchKeyword.value}")`)
+    filters.push(`(email ~ "${searchKeyword.value}" || username ~ "${searchKeyword.value}")`)
   }
   if (roleFilter.value) {
     filters.push(`role = ${roleFilter.value}`)
@@ -328,7 +362,7 @@ const fetchUsers = async () => {
     const result = await pb.collection('users').getList(
       pagination.page,
       pagination.pageSize,
-      { filter, sort: '-created' }
+      { filter, sort: '-id' }
     )
     users.value = result.items as unknown as User[]
     pagination.pageCount = result.totalPages
@@ -359,10 +393,16 @@ const handlePagination = (newPagination: typeof pagination) => {
   fetchUsers()
 }
 
+const formatTime = (time: string) => {
+  if (!time) return '-'
+  return new Date(time).toLocaleString('zh-CN')
+}
+
 const editUser = async (user: User) => {
   editingId.value = user.id
+  editingUser.value = user
   form.email = user.email
-  form.name = user.name
+  form.username = user.username
   form.password = ''
   form.gender = String(user.gender)
   form.role = String(user.role)
@@ -385,7 +425,7 @@ const toggleStatus = async (user: User) => {
 const deleteUser = (user: User) => {
   dialog.warning({
     title: '确认删除',
-    content: `确定要删除用户「${user.name || user.email}」吗？此操作不可恢复。`,
+    content: `确定要删除用户「${user.username || user.email}」吗？此操作不可恢复。`,
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -402,8 +442,9 @@ const deleteUser = (user: User) => {
 
 const handleModalClose = () => {
   editingId.value = null
+  editingUser.value = null
   form.email = ''
-  form.name = ''
+  form.username = ''
   form.password = ''
   form.gender = '0'
   form.role = '0'
@@ -432,7 +473,7 @@ const submitForm = async () => {
     if (editingId.value) {
       const updateData: Record<string, any> = {
         email: form.email.trim(),
-        name: form.name,
+        username: form.username,
         gender: parseInt(form.gender),
         role: parseInt(form.role),
         is_admin: form.is_admin
@@ -447,12 +488,13 @@ const submitForm = async () => {
         updateData.password = form.password
         updateData.passwordConfirm = form.password
       }
+      updateData.updated_at = new Date().toISOString()
       await pb.collection('users').update(editingId.value, updateData)
       message.success('修改成功')
     } else {
       await pb.collection('users').create({
         email: form.email,
-        name: form.name,
+        username: form.username,
         password: form.password,
         passwordConfirm: form.password,
         gender: parseInt(form.gender),
@@ -462,7 +504,9 @@ const submitForm = async () => {
         age: form.age ? parseInt(form.age) : null,
         bio: form.bio,
         status: 1,
-        is_online: 0
+        is_online: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
       await pb.collection('user_stats').create({
         user_id: (await pb.collection('users').getFirstListItem(`email="${form.email}"`)).id,

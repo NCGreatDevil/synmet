@@ -1,24 +1,27 @@
 <template>
-  <div class="container">
-    <h1>{{ message }}</h1>
-    <div class="counter">
+  <div class="max-w-[800px] mx-auto p-8 text-center font-[Inter,system-ui,Avenir,Helvetica,Arial,sans-serif]">
+    <h1 class="text-3xl text-[#213547]">{{ message }}</h1>
+    <div class="mt-8">
       <p>Count: {{ count }}</p>
-      <button @click="increment">Increment</button>
-    </div>
-    
-    <div class="auth-info" v-if="authStore.isAuthenticated">
-      <p>欢迎, {{ authStore.currentUser?.name }}</p>
-      <n-button text type="error" @click="handleLogout">退出登录</n-button>
-    </div>
-    <div class="auth-links" v-else>
-      <router-link to="/login" class="link-btn">登录</router-link>
-      <router-link to="/register" class="link-btn">注册</router-link>
+      <button
+        class="px-4 py-2 text-base cursor-pointer border border-[#213547] rounded bg-[#f9f9f9] transition-colors duration-200 hover:bg-[#e0e0e0]"
+        @click="increment"
+      >Increment</button>
     </div>
 
-    <div class="test-link">
-      <router-link to="/square" class="link-btn">进入社交关系图谱</router-link>
-      <router-link to="/test-mob" class="link-btn">进入移动端社交图谱</router-link>
-      <router-link v-if="authStore.isAdmin" to="/users" class="link-btn">用户管理</router-link>
+    <div class="mt-8" v-if="authStore.isAuthenticated">
+      <p>欢迎, {{ authStore.currentUser?.username || authStore.currentUser?.name || authStore.currentUser?.email }}</p>
+      <n-button text type="error" @click="handleLogout">退出登录</n-button>
+    </div>
+    <div class="mt-8" v-else>
+      <router-link to="/login" class="inline-block px-6 py-3 text-base text-white bg-[#1677ff] rounded-lg no-underline transition-colors duration-200 hover:bg-[#4096ff] m-2">登录</router-link>
+      <router-link to="/register" class="inline-block px-6 py-3 text-base text-white bg-[#1677ff] rounded-lg no-underline transition-colors duration-200 hover:bg-[#4096ff] m-2">注册</router-link>
+    </div>
+
+    <div class="mt-8">
+      <router-link to="/square" class="inline-block px-6 py-3 text-base text-white bg-[#1677ff] rounded-lg no-underline transition-colors duration-200 hover:bg-[#4096ff] m-2">进入社交关系图谱</router-link>
+      <router-link to="/test-mob" class="inline-block px-6 py-3 text-base text-white bg-[#1677ff] rounded-lg no-underline transition-colors duration-200 hover:bg-[#4096ff] m-2">进入移动端社交图谱</router-link>
+      <router-link v-if="authStore.isAdmin" to="/users" class="inline-block px-6 py-3 text-base text-white bg-[#1677ff] rounded-lg no-underline transition-colors duration-200 hover:bg-[#4096ff] m-2">用户管理</router-link>
     </div>
   </div>
 </template>
@@ -47,60 +50,3 @@ const handleLogout = async () => {
 }
 </script>
 
-<style scoped>
-.container {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-}
-
-h1 {
-  font-size: 2rem;
-  color: #213547;
-}
-
-.counter {
-  margin-top: 2rem;
-}
-
-button {
-  padding: 0.5rem 1rem;
-  font-size: 1rem;
-  cursor: pointer;
-  border: 1px solid #213547;
-  border-radius: 4px;
-  background-color: #f9f9f9;
-  transition: background-color 0.2s;
-}
-
-button:hover {
-  background-color: #e0e0e0;
-}
-
-.auth-info,
-.auth-links {
-  margin-top: 2rem;
-}
-
-.test-link {
-  margin-top: 2rem;
-}
-
-.link-btn {
-  display: inline-block;
-  padding: 0.75rem 1.5rem;
-  font-size: 1rem;
-  color: #fff;
-  background-color: #1677ff;
-  border-radius: 8px;
-  text-decoration: none;
-  transition: background-color 0.2s;
-  margin: 0 0.5rem;
-}
-
-.link-btn:hover {
-  background-color: #4096ff;
-}
-</style>

@@ -12,43 +12,57 @@
           <p class="text-gray-500 mt-2">请输入您的账号信息</p>
         </div>
 
-        <n-form :model="form" label-placement="top" class="space-y-6">
-          <n-form-item label="邮箱" required>
-            <n-input
-              v-model:value="form.email"
-              type="email"
-              placeholder="请输入邮箱地址"
-              :disabled="loading"
-              :input-props="{ autocomplete: 'email' }"
-              class="w-full"
-            />
-          </n-form-item>
+        <div class="space-y-6">
+          <n-form :model="form" label-placement="top">
+            <n-form-item label="邮箱" required>
+              <n-input
+                v-model:value="form.email"
+                type="email"
+                placeholder="请输入邮箱地址"
+                :disabled="loading"
+                :input-props="{ autocomplete: 'email' }"
+                class="w-full"
+              />
+            </n-form-item>
 
-          <n-form-item label="密码" required>
-            <n-input
-              v-model:value="form.password"
-              type="password"
-              placeholder="请输入密码"
-              :disabled="loading"
-              show-password
-              :input-props="{ autocomplete: 'current-password' }"
-              class="w-full"
-            />
-          </n-form-item>
+            <n-form-item label="密码" required>
+              <n-input
+                v-model:value="form.password"
+                type="password"
+                placeholder="请输入密码"
+                :disabled="loading"
+                show-password
+                :input-props="{ autocomplete: 'current-password' }"
+                class="w-full"
+              />
+            </n-form-item>
+          </n-form>
 
-          <n-form-item>
-            <n-button
-              type="primary"
-              block
-              size="large"
-              :loading="loading"
-              @click="handleLogin"
-              class="w-full"
-            >
-              {{ loading ? '登录中...' : '登 录' }}
-            </n-button>
-          </n-form-item>
-        </n-form>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center">
+              <input
+                id="remember"
+                v-model="rememberMe"
+                type="checkbox"
+                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+              />
+              <label for="remember" class="ml-2 text-sm text-gray-600 cursor-pointer">
+                记住密码
+              </label>
+            </div>
+          </div>
+
+          <n-button
+            type="primary"
+            block
+            size="large"
+            :loading="loading"
+            @click="handleLogin"
+            class="w-full"
+          >
+            {{ loading ? '登录中...' : '登 录' }}
+          </n-button>
+        </div>
 
         <div class="mt-6 text-center">
           <p class="text-gray-500">
@@ -64,7 +78,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMessage } from 'naive-ui'
 import { useAuthStore } from '@/stores/auth'
@@ -74,9 +88,22 @@ const message = useMessage()
 const authStore = useAuthStore()
 
 const loading = ref(false)
+const rememberMe = ref(false)
 const form = reactive({
   email: '',
   password: ''
+})
+
+onMounted(() => {
+  const saved = localStorage.getItem('remembered_credentials')
+  if (saved) {
+    try {
+      const creds = JSON.parse(saved)
+      form.email = creds.email || ''
+      form.password = creds.password || ''
+      rememberMe.value = true
+    } catch {}
+  }
 })
 
 const handleLogin = async () => {
@@ -88,6 +115,16 @@ const handleLogin = async () => {
   loading.value = true
   try {
     await authStore.login(form.email, form.password)
+    
+    if (rememberMe.value) {
+      localStorage.setItem('remembered_credentials', JSON.stringify({
+        email: form.email,
+        password: form.password
+      }))
+    } else {
+      localStorage.removeItem('remembered_credentials')
+    }
+    
     message.success('登录成功')
     router.push('/')
   } catch (error: any) {

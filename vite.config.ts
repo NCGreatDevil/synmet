@@ -10,5 +10,14 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
       '@vicons/ionicons5': path.resolve(__dirname, './node_modules/@vicons/ionicons5')
     }
+  },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://synmet.ma.cloud-ip.cc',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 })

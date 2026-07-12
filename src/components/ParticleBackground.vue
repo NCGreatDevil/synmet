@@ -1,5 +1,5 @@
 <template>
-  <canvas ref="particleCanvas" class="particle-canvas"></canvas>
+  <canvas ref="particleCanvas" class="fixed inset-0 w-full h-full pointer-events-none z-0"></canvas>
 </template>
 
 <script setup lang="ts">
@@ -137,15 +137,3 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
 </script>
-
-<style scoped>
-.particle-canvas {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 0;
-}
-</style>

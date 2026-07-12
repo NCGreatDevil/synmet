@@ -1,16 +1,15 @@
 <template>
   <NDrawer :show="show" @update:show="$emit('update:show', $event)" :width="360" placement="right">
-    <NDrawerContent :title="isEditing ? '编辑用户信息' : activeUser?.data.name" closable>
+    <NDrawerContent :title="activeUser?.data.name" closable>
       <div class="drawer-content">
         <div :class="['avatar-container', `status-${activeUser?.data.status || 'offline'}`]">
           <div class="avatar-wrapper">
-            <NAvatar :size="80" round :src="activeUser?.data.avatar" class="drawer-avatar" />
+            <NAvatar :size="80" round :src="getAvatarUrl()" class="drawer-avatar" />
           </div>
           <div class="status-pulse"></div>
         </div>
 
-        <!-- 非编辑模式：展示基本信息 -->
-        <div v-if="!isEditing" class="info-section">
+        <div class="info-section">
           <div class="info-item">
             <span class="info-label">状态：</span>
             <NTag :type="getStatusType(activeUser?.data.status)" round>
@@ -52,71 +51,6 @@
               减少人气
             </NButton>
           </NSpace>
-          <NButton type="primary" block class="edit-btn" @click="handleStartEditing">
-            编辑
-          </NButton>
-        </div>
-
-        <!-- 编辑模式：可修改信息 -->
-        <div v-else class="info-section">
-          <div class="info-item">
-            <span class="info-label">用户名：</span>
-            <NInput v-model:value="editForm.name" placeholder="请输入用户名" />
-          </div>
-          <div class="info-item">
-            <span class="info-label">个人介绍：</span>
-            <NInput v-model:value="editForm.bio" type="textarea" placeholder="请输入个人介绍" :rows="3" />
-          </div>
-          <div class="info-item">
-            <span class="info-label">标签：</span>
-            <div class="tag-selector">
-              <div class="tag-section">
-                <span class="tag-section-title">已选（{{ editForm.selectedTags.length }}/3）</span>
-                <NSpace class="tag-list" wrap>
-                  <NTag
-                    v-for="tag in editForm.selectedTags"
-                    :key="tag"
-                    type="primary"
-                    round
-                    size="small"
-                    closable
-                    @close="handleToggleTag(tag)"
-                    class="cursor-pointer"
-                  >
-                    {{ tag }}
-                  </NTag>
-                  <span v-if="!editForm.selectedTags.length" class="no-tags">未选择标签</span>
-                </NSpace>
-              </div>
-              <div class="tag-divider"></div>
-              <div class="tag-section">
-                <span class="tag-section-title">待选</span>
-                <NSpace class="tag-list" wrap>
-                  <NTag
-                    v-for="tag in availableTags.filter(t => !editForm.selectedTags.includes(t))"
-                    :key="tag"
-                    type="info"
-                    bordered
-                    round
-                    size="small"
-                    @click="handleToggleTag(tag)"
-                    class="cursor-pointer"
-                  >
-                    {{ tag }}
-                  </NTag>
-                  <span v-if="availableTags.filter(t => !editForm.selectedTags.includes(t)).length === 0" class="no-tags">暂无可用标签</span>
-                </NSpace>
-              </div>
-            </div>
-          </div>
-          <NSpace vertical class="edit-actions">
-            <NButton type="primary" block @click="handleSaveEdit">
-              保存
-            </NButton>
-            <NButton block @click="handleCancelEdit">
-              取消
-            </NButton>
-          </NSpace>
         </div>
       </div>
     </NDrawerContent>
@@ -124,36 +58,22 @@
 </template>
 
 <script setup lang="ts">
-import { reactive } from 'vue'
-import { NDrawer, NDrawerContent, NAvatar, NTag, NSpace, NInput, NButton } from 'naive-ui'
+import { NDrawer, NDrawerContent, NAvatar, NTag, NSpace, NButton } from 'naive-ui'
 import { CaretUpSharp, CaretDownSharp } from '@vicons/ionicons5'
 import type { Node } from '@vue-flow/core'
-import type { UserData, UserStatus, EditForm } from '@/types'
+import type { UserStatus } from '@/types'
+import { getDefaultAvatar } from '@/lib/pocketbase'
 
 const props = defineProps<{
   show: boolean
   activeUser: Node | null
-  isEditing: boolean
-  availableTags: string[]
 }>()
 
 const emit = defineEmits<{
   'update:show': [value: boolean]
-  'update:isEditing': [value: boolean]
-  'update:activeUser': [value: Node | null]
   increasePopularity: []
   decreasePopularity: []
-  saveEdit: [form: EditForm]
-  cancelEdit: []
-  toggleTag: [tag: string]
-  startEditing: []
 }>()
-
-const editForm = reactive<EditForm>({
-  name: '',
-  bio: '',
-  selectedTags: []
-})
 
 const getStatusType = (status?: UserStatus) => {
   switch (status) {
@@ -171,19 +91,6 @@ const getStatusText = (status?: UserStatus) => {
   }
 }
 
-const handleToggleTag = (tag: string) => {
-  emit('toggleTag', tag)
-}
-
-const handleStartEditing = () => {
-  if (!props.activeUser) return
-  const data = props.activeUser.data as UserData
-  editForm.name = data.name || ''
-  editForm.bio = data.bio || ''
-  editForm.selectedTags = [...(data.tags || [])]
-  emit('startEditing')
-}
-
 const handleIncreasePopularity = () => {
   emit('increasePopularity')
 }
@@ -192,12 +99,11 @@ const handleDecreasePopularity = () => {
   emit('decreasePopularity')
 }
 
-const handleSaveEdit = () => {
-  emit('saveEdit', { ...editForm })
-}
-
-const handleCancelEdit = () => {
-  emit('cancelEdit')
+const getAvatarUrl = () => {
+  if (!props.activeUser) return getDefaultAvatar(0)
+  const data = props.activeUser.data as any
+  // data.avatar 已经是完整 URL（由 useGraph.ts 中的 getUserAvatarUrl 生成）
+  return data.avatar || getDefaultAvatar(data.gender || 0)
 }
 </script>
 
@@ -241,6 +147,7 @@ const handleCancelEdit = () => {
 
 .drawer-avatar {
   border-radius: 50%;
+  background-color: #fff !important;
 }
 
 .status-pulse {
@@ -304,40 +211,5 @@ const handleCancelEdit = () => {
 .popularity-buttons {
   margin-top: 8px;
   margin-bottom: 16px;
-}
-
-.edit-btn {
-  margin-top: 8px;
-}
-
-.tag-selector {
-  width: 100%;
-}
-
-.tag-section {
-  margin-bottom: 12px;
-}
-
-.tag-section-title {
-  font-size: 12px;
-  font-weight: 500;
-  color: #6b7280;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.tag-list {
-  flex-wrap: wrap;
-}
-
-.tag-divider {
-  height: 1px;
-  background: #e5e7eb;
-  margin: 16px 0;
-  border-style: dashed;
-}
-
-.edit-actions {
-  margin-top: 8px;
 }
 </style>

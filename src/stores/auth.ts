@@ -6,6 +6,7 @@ export interface User {
   id: string
   email: string
   name: string
+  username: string
   avatar: string
   gender: number
   age: number | null
@@ -14,8 +15,8 @@ export interface User {
   status: number
   is_online: number
   is_admin: boolean
-  created: string
-  updated: string
+  created_at: string
+  updated_at: string
 }
 
 export const useAuthStore = defineStore('auth', () => {

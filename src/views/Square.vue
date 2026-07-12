@@ -36,14 +36,14 @@
     <UserDrawer
       v-model:show="showDrawer"
       :active-user="activeUser"
-      :is-editing="isEditing"
-      :available-tags="availableTags"
       @increase-popularity="increasePopularity"
       @decrease-popularity="decreasePopularity"
-      @save-edit="handleSaveEdit"
-      @cancel-edit="cancelEdit"
-      @toggle-tag="handleToggleTag"
-      @start-editing="startEditing"
+    />
+
+    <!-- 个人资料编辑对话框 -->
+    <ProfileEditDialog
+      v-model:show="showProfileEdit"
+      @saved="handleProfileSaved"
     />
   </div>
 </template>
@@ -60,26 +60,23 @@ import UserNode from '@/components/UserNode.vue'
 import HeaderBar from '@/components/HeaderBar.vue'
 import ActionBar from '@/components/ActionBar.vue'
 import UserDrawer from '@/components/UserDrawer.vue'
+import ProfileEditDialog from '@/components/ProfileEditDialog.vue'
 import { useGraph } from '@/composables/useGraph'
+import { useAuthStore } from '@/stores/auth'
 
 
 const message = useMessage()
+const authStore = useAuthStore()
 
 const {
   nodes,
   edges,
   activeUser,
-  isEditing,
-  availableTags,
   onNodesChange,
   onEdgesChange,
   refreshPage,
-  toggleTag,
-  startEditing,
   increasePopularity,
   decreasePopularity,
-  saveEdit,
-  cancelEdit,
   clearAllActive,
   handleNodeClick,
   handleNodeDoubleClick,
@@ -88,6 +85,7 @@ const {
 } = useGraph()
 
 const showDrawer = ref(false)
+const showProfileEdit = ref(false)
 
 const nodeTypes = {
   userNode: markRaw(UserNode) as any
@@ -111,10 +109,10 @@ const handlePaneClick = () => {
   showDrawer.value = false
 }
 
-const handleMenuSelect = (key: string) => {
+const handleMenuSelect = async (key: string) => {
   switch (key) {
     case 'profile':
-      message.info('我的页面')
+      showProfileEdit.value = true
       break
     case 'settings':
       message.info('设置页面')
@@ -123,23 +121,15 @@ const handleMenuSelect = (key: string) => {
       message.info('帮助页面')
       break
     case 'logout':
-      message.info('退出登录')
+      await authStore.logout()
+      message.success('已退出登录')
+      window.location.href = '/'
       break
   }
 }
 
-const handleToggleTag = (tag: string) => {
-  const success = toggleTag(tag)
-  if (!success) {
-    message.warning('最多选择3个标签')
-  }
-}
-
-const handleSaveEdit = () => {
-  const success = saveEdit()
-  if (success) {
-    message.success('保存成功')
-  }
+const handleProfileSaved = () => {
+  message.success('个人资料已更新')
 }
 </script>
 

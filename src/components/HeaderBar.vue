@@ -14,11 +14,19 @@
       </div>
     </div>
 
-    <!-- 右上角用户头像 -->
+    <!-- 右上角用户信息 -->
     <div class="header-right">
       <NDropdown :options="menuOptions" @select="handleMenuSelect">
         <template #default>
-          <NAvatar :size="48" :round="true" src="https://randomuser.me/api/portraits/men/10.jpg" class="user-avatar" />
+          <div class="user-info">
+            <NAvatar
+              :size="36"
+              :round="true"
+              :src="getAvatarUrl(currentUser)"
+              class="user-avatar"
+            />
+            <span class="user-name">{{ currentUser?.username || currentUser?.name || '用户' }}</span>
+          </div>
         </template>
       </NDropdown>
     </div>
@@ -27,6 +35,16 @@
 
 <script setup lang="ts">
 import { NMarquee, NDropdown, NAvatar } from 'naive-ui'
+import { storeToRefs } from 'pinia'
+import { useAuthStore } from '@/stores/auth'
+import { getUserAvatarUrl } from '@/lib/pocketbase'
+
+const authStore = useAuthStore()
+const { currentUser } = storeToRefs(authStore)
+
+const getAvatarUrl = (user: { id: string; avatar: string; gender?: number } | null) => {
+  return getUserAvatarUrl(user)
+}
 
 const menuOptions = [
   { label: '我的', key: 'profile' },
@@ -53,7 +71,7 @@ const handleMenuSelect = (key: string) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px;
+  padding: 16px 24px;
   z-index: 10;
 }
 
@@ -99,8 +117,33 @@ const handleMenuSelect = (key: string) => {
   flex-shrink: 0;
 }
 
-.user-avatar {
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
-  border: 2px solid #079992;
+  padding: 4px 12px 4px 4px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  transition: background 0.2s;
+}
+
+.user-info:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.user-avatar {
+  border: 2px solid #fff;
+}
+
+.user-name {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 500;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
