@@ -15,8 +15,8 @@
         <n-dropdown :options="userDropdownOptions" @select="handleUserMenuSelect">
           <div class="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
             <img
-              v-if="getAvatarUrl(authStore.currentUser)"
-              :src="getAvatarUrl(authStore.currentUser)"
+              v-if="getUserAvatarUrl(authStore.currentUser)"
+              :src="getUserAvatarUrl(authStore.currentUser)"
               class="rounded-full"
               style="width: 36px; height: 36px; object-fit: cover;"
               @error="(e: Event) => { (e.target as HTMLImageElement).style.display = 'none' }"
@@ -164,14 +164,10 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, h, computed } from 'vue'
 import type { FormInst, FormItemRule, FormRules, DropdownOption } from 'naive-ui'
-import { useMessage, useDialog, NTag, NSpace, NButton, NCheckbox, NGrid, NGi, NDropdown, NAvatar } from 'naive-ui'
+import { useMessage, useDialog, NTag, NSpace, NButton, NCheckbox, NGrid, NGi, NDropdown } from 'naive-ui'
 import { useAuthStore, type User } from '@/stores/auth'
 import { useRouter } from 'vue-router'
-import pb, { getUserAvatarUrl, getDefaultAvatar } from '@/lib/pocketbase'
-
-const getAvatarUrl = (user: { id: string; avatar: string; gender?: number } | null | undefined) => {
-  return getUserAvatarUrl(user)
-}
+import pb, { getUserAvatarUrl } from '@/lib/pocketbase'
 
 const message = useMessage()
 const dialog = useDialog()

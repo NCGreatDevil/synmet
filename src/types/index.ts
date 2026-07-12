@@ -1,5 +1,7 @@
+/** 用户在线状态 */
 export type UserStatus = 'active' | 'online' | 'offline'
 
+/** 广场节点用户数据 */
 export interface UserData {
   id: string
   name: string
@@ -10,15 +12,4 @@ export interface UserData {
   interaction: number
   popularity: number
   gender?: number
-}
-
-export interface EditForm {
-  name: string
-  bio: string
-  selectedTags: string[]
-}
-
-export interface MenuItem {
-  label: string
-  key: string
 }

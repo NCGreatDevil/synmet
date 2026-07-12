@@ -22,7 +22,7 @@
             <NAvatar
               :size="36"
               :round="true"
-              :src="getAvatarUrl(currentUser)"
+              :src="getUserAvatarUrl(currentUser)"
               class="user-avatar"
             />
             <span class="user-name">{{ currentUser?.username || currentUser?.name || '用户' }}</span>
@@ -41,10 +41,6 @@ import { getUserAvatarUrl } from '@/lib/pocketbase'
 
 const authStore = useAuthStore()
 const { currentUser } = storeToRefs(authStore)
-
-const getAvatarUrl = (user: { id: string; avatar: string; gender?: number } | null) => {
-  return getUserAvatarUrl(user)
-}
 
 const menuOptions = [
   { label: '我的', key: 'profile' },

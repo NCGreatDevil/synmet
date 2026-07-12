@@ -6,7 +6,7 @@
     <Handle :id="`${id}-right`" type="source" :position="Position.Right" class="connect-handle" />
     <div class="avatar-container">
       <div class="avatar-wrapper">
-        <img :src="data.avatar" class="avatar" />
+        <img :src="data.avatar" class="avatar" @error="handleAvatarError" />
       </div>
       <div class="status-pulse"></div>
     </div>
@@ -26,6 +26,12 @@ const props = defineProps<{
 }>()
 
 const status = computed(() => props.data.status || 'offline')
+
+/** 头像加载失败时隐藏图片 */
+const handleAvatarError = (e: Event) => {
+  const target = e.target as HTMLImageElement
+  target.style.display = 'none'
+}
 </script>
 
 <style scoped>
