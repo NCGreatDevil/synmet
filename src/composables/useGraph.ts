@@ -22,6 +22,7 @@ export function useGraph() {
 
   const selectedEdgeId = ref<string | null>(null)
   const activeUser = ref<any>(null)
+  const selectedEdge = ref<any>(null) // 选中的连线信息（包含两端用户数据）
   const loading = ref(true)
   const nodes = ref<any[]>([])
   const edges = ref<any[]>([])
@@ -100,7 +101,8 @@ export function useGraph() {
         status: computeStatus(u),
         interaction: statsMap.get(u.id)?.interaction_count || 0,
         popularity: statsMap.get(u.id)?.popularity_score || 0,
-        gender: (u as any).gender || 0
+        gender: (u as any).gender || 0,
+        age: (u as any).age || null
       }))
 
       const positions = generateRandomPositions(userDataList.length)
@@ -354,6 +356,8 @@ export function useGraph() {
   const handleEdgeClick = ({ edge }: any) => {
     clearAllActive()
     selectedEdgeId.value = edge.id
+    
+    // 高亮选中的连线和两端节点
     nodes.value = nodes.value.map(n => ({
       ...n,
       selected: n.id === edge.source || n.id === edge.target
@@ -362,6 +366,50 @@ export function useGraph() {
       ...e,
       animated: e.id === edge.id,
       style: { stroke: e.id === edge.id ? '#ff4d6d' : '#b1b1b7', strokeWidth: e.id === edge.id ? 3 : 1.5 }
+    }))
+    
+    // 获取连线两端的用户数据
+    const sourceNode = nodes.value.find((n: any) => n.id === edge.source)
+    const targetNode = nodes.value.find((n: any) => n.id === edge.target)
+    
+    if (sourceNode && targetNode) {
+      selectedEdge.value = {
+        id: edge.id,
+        userA: sourceNode.data,
+        userB: targetNode.data
+      }
+    }
+  }
+  
+  /** 取消匹配：删除连线并隐藏面板 */
+  const cancelMatch = () => {
+    if (!selectedEdgeId.value) return
+    
+    const edgeId = selectedEdgeId.value
+    edges.value = edges.value.filter((e: any) => e.id !== edgeId)
+    selectedEdgeId.value = null
+    selectedEdge.value = null
+    
+    // 清除高亮
+    nodes.value = nodes.value.map(n => ({ ...n, selected: false }))
+    edges.value = edges.value.map(e => ({
+      ...e,
+      animated: false,
+      style: { stroke: '#b1b1b7', strokeWidth: 1.5 }
+    }))
+  }
+  
+  /** 关闭匹配面板（保留连线） */
+  const closeMatchPanel = () => {
+    selectedEdgeId.value = null
+    selectedEdge.value = null
+    
+    // 清除高亮
+    nodes.value = nodes.value.map(n => ({ ...n, selected: false }))
+    edges.value = edges.value.map(e => ({
+      ...e,
+      animated: false,
+      style: { stroke: '#b1b1b7', strokeWidth: 1.5 }
     }))
   }
 
@@ -383,6 +431,30 @@ export function useGraph() {
       animated: true
     }
     edges.value = [...edges.value, newEdge]
+    
+    // 连线成功后，设置选中的连线信息（用于显示匹配面板）
+    const sourceNode = nodes.value.find((n: any) => n.id === params.source)
+    const targetNode = nodes.value.find((n: any) => n.id === params.target)
+    
+    if (sourceNode && targetNode) {
+      selectedEdgeId.value = newEdge.id
+      selectedEdge.value = {
+        id: newEdge.id,
+        userA: sourceNode.data,
+        userB: targetNode.data
+      }
+      
+      // 高亮新创建的连线和两端节点
+      nodes.value = nodes.value.map(n => ({
+        ...n,
+        selected: n.id === params.source || n.id === params.target
+      }))
+      edges.value = edges.value.map(e => ({
+        ...e,
+        animated: e.id === newEdge.id,
+        style: { stroke: e.id === newEdge.id ? '#ff4d6d' : '#b1b1b7', strokeWidth: e.id === newEdge.id ? 3 : 1.5 }
+      }))
+    }
   }
 
   /** 高亮与指定节点相关的边和节点 */
@@ -413,6 +485,7 @@ export function useGraph() {
     nodes,
     edges,
     selectedEdgeId,
+    selectedEdge,
     activeUser,
     loading,
     availableTags,
@@ -425,6 +498,8 @@ export function useGraph() {
     handleNodeClick,
     handleNodeDoubleClick,
     handleEdgeClick,
-    handleConnect
+    handleConnect,
+    cancelMatch,
+    closeMatchPanel
   }
 }

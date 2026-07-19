@@ -12,4 +12,5 @@ export interface UserData {
   interaction: number
   popularity: number
   gender?: number
+  age?: number | null
 }

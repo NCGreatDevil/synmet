@@ -45,11 +45,23 @@
       v-model:show="showProfileEdit"
       @saved="handleProfileSaved"
     />
+
+    <!-- 牵线匹配面板（仅红娘角色可见） -->
+    <MatchmakingPanel
+      v-if="isMatchmaker"
+      :show="showMatchPanel"
+      :user-a="selectedEdge?.userA"
+      :user-b="selectedEdge?.userB"
+      :sending="sendingRequest"
+      @close="handleClosePanel"
+      @send-request="handleSendRequest"
+      @cancel-match="handleCancelMatch"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, markRaw } from 'vue'
+import { ref, markRaw, computed } from 'vue'
 import { VueFlow, ConnectionMode } from '@vue-flow/core'
 import { useMessage } from 'naive-ui'
 import '@vue-flow/core/dist/style.css'
@@ -61,17 +73,21 @@ import HeaderBar from '@/components/HeaderBar.vue'
 import ActionBar from '@/components/ActionBar.vue'
 import UserDrawer from '@/components/UserDrawer.vue'
 import ProfileEditDialog from '@/components/ProfileEditDialog.vue'
+import MatchmakingPanel from '@/components/MatchmakingPanel.vue'
 import { useGraph } from '@/composables/useGraph'
 import { useAuthStore } from '@/stores/auth'
+import { useMatchmakingStore } from '@/stores/matchmaking'
 
 
 const message = useMessage()
 const authStore = useAuthStore()
+const matchmakingStore = useMatchmakingStore()
 
 const {
   nodes,
   edges,
   activeUser,
+  selectedEdge,
   onNodesChange,
   onEdgesChange,
   refreshPage,
@@ -81,11 +97,20 @@ const {
   handleNodeClick,
   handleNodeDoubleClick,
   handleEdgeClick,
-  handleConnect
+  handleConnect,
+  cancelMatch,
+  closeMatchPanel
 } = useGraph()
 
 const showDrawer = ref(false)
 const showProfileEdit = ref(false)
+const sendingRequest = ref(false)
+
+// 判断当前用户是否为红娘角色（role=1）
+const isMatchmaker = computed(() => Number(authStore.currentUser?.role) === 1)
+
+// 匹配面板显示状态：有选中连线且当前用户是红娘
+const showMatchPanel = computed(() => isMatchmaker.value && selectedEdge.value !== null)
 
 const nodeTypes = {
   userNode: markRaw(UserNode) as any
@@ -130,6 +155,51 @@ const handleMenuSelect = async (key: string) => {
 
 const handleProfileSaved = () => {
   message.success('个人资料已更新')
+}
+
+/** 关闭匹配面板（保留连线） */
+const handleClosePanel = () => {
+  closeMatchPanel()
+}
+
+/** 发送匹配请求：创建牵线申请并发送通知 */
+const handleSendRequest = async () => {
+  if (!selectedEdge.value) return
+  sendingRequest.value = true
+  try {
+    const matchmakerId = authStore.currentUser?.id || ''
+    const matchmakerName = authStore.currentUser?.username || authStore.currentUser?.name || '红娘'
+    
+    console.log('发送匹配请求:', {
+      matchmakerId,
+      matchmakerName,
+      userA: selectedEdge.value.userA,
+      userB: selectedEdge.value.userB
+    })
+    
+    matchmakingStore.sendMatchmakingInvite(
+      matchmakerId,
+      matchmakerName,
+      selectedEdge.value.userA,
+      selectedEdge.value.userB
+    )
+    
+    console.log('通知已创建，当前通知数量:', matchmakingStore.notifications.length)
+    
+    message.success(`已向 ${selectedEdge.value.userA.name} 和 ${selectedEdge.value.userB.name} 发送匹配请求`)
+    closeMatchPanel()
+  } catch (error) {
+    console.error('发送匹配请求失败:', error)
+    message.error('发送匹配请求失败')
+  } finally {
+    sendingRequest.value = false
+  }
+}
+
+/** 取消匹配：删除连线并隐藏面板 */
+const handleCancelMatch = () => {
+  cancelMatch()
+  message.info('已取消匹配')
 }
 </script>
 
