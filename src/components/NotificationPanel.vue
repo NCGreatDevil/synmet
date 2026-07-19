@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import {
   NTabs,
@@ -171,6 +171,23 @@ const selectedNotification = ref<Notification | null>(null)
 // 获取当前用户ID
 const currentUserId = computed(() => authStore.currentUser?.id || '')
 
+// 监听面板打开，加载数据
+watch(() => props.show, async (newShow) => {
+  if (newShow && currentUserId.value) {
+    // 加载收件箱
+    await matchmakingStore.loadInboxNotifications(currentUserId.value)
+  }
+})
+
+// 监听 Tab 切换，加载发件箱
+watch(activeTab, async (newTab) => {
+  if (newTab === 'sent' && currentUserId.value) {
+    await matchmakingStore.loadSentNotifications(currentUserId.value)
+  } else if (newTab === 'inbox' && currentUserId.value) {
+    await matchmakingStore.loadInboxNotifications(currentUserId.value)
+  }
+})
+
 // 收件箱：当前用户收到的通知
 const inboxNotifications = computed(() => {
   return allNotifications.value.filter(n => n.userId === currentUserId.value)
@@ -189,13 +206,15 @@ const sentNotifications = computed(() => {
   })
 })
 
-const handleNotificationClick = (notification: Notification) => {
+const handleNotificationClick = async (notification: Notification) => {
   selectedNotification.value = notification
   showDetailModal.value = true
 
   // 标记为已读
   if (!notification.isRead) {
-    matchmakingStore.markAsRead(notification.id)
+    await matchmakingStore.markAsRead(notification.id)
+    // 更新本地状态
+    notification.isRead = true
   }
 }
 

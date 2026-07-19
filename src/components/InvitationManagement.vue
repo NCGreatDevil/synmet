@@ -177,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   NDrawer,
   NDrawerContent,
@@ -218,6 +218,13 @@ const isMatchmaker = computed(() => Number(authStore.currentUser?.role) === 1)
 const currentUserId = computed(() => authStore.currentUser?.id || '')
 const currentUserName = computed(() => authStore.currentUser?.username || authStore.currentUser?.name || '')
 
+// 监听面板打开，加载数据
+watch(() => props.show, async (newShow) => {
+  if (newShow && currentUserId.value) {
+    await matchmakingStore.loadUserApplications(currentUserId.value, isMatchmaker.value)
+  }
+})
+
 // 获取当前用户相关的邀请列表
 const applications = computed(() => {
   return matchmakingStore.getUserApplications(currentUserId.value, isMatchmaker.value)
@@ -248,14 +255,28 @@ const handleUserClick = (user: any) => {
   showUserModal.value = true
 }
 
-const handleAccept = (applicationId: string) => {
-  matchmakingStore.acceptInvitation(applicationId, currentUserId.value, currentUserName.value)
-  message.success('已接受邀请')
+const handleAccept = async (applicationId: string) => {
+  try {
+    await matchmakingStore.acceptInvitation(applicationId, currentUserId.value, currentUserName.value)
+    message.success('已接受邀请')
+    // 重新加载数据
+    await matchmakingStore.loadUserApplications(currentUserId.value, isMatchmaker.value)
+  } catch (error) {
+    console.error('接受邀请失败:', error)
+    message.error('接受邀请失败')
+  }
 }
 
-const handleReject = (applicationId: string) => {
-  matchmakingStore.rejectInvitation(applicationId, currentUserId.value, currentUserName.value)
-  message.success('已拒绝邀请')
+const handleReject = async (applicationId: string) => {
+  try {
+    await matchmakingStore.rejectInvitation(applicationId, currentUserId.value, currentUserName.value)
+    message.success('已拒绝邀请')
+    // 重新加载数据
+    await matchmakingStore.loadUserApplications(currentUserId.value, isMatchmaker.value)
+  } catch (error) {
+    console.error('拒绝邀请失败:', error)
+    message.error('拒绝邀请失败')
+  }
 }
 
 const formatDate = (date: Date) => {

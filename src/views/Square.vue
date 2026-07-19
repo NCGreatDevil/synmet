@@ -177,14 +177,14 @@ const handleSendRequest = async () => {
       userB: selectedEdge.value.userB
     })
     
-    matchmakingStore.sendMatchmakingInvite(
+    await matchmakingStore.sendMatchmakingInvite(
       matchmakerId,
       matchmakerName,
       selectedEdge.value.userA,
       selectedEdge.value.userB
     )
-    
-    console.log('通知已创建，当前通知数量:', matchmakingStore.notifications.length)
+
+    console.log('匹配邀请已发送到数据库')
     
     message.success(`已向 ${selectedEdge.value.userA.name} 和 ${selectedEdge.value.userB.name} 发送匹配请求`)
     closeMatchPanel()
