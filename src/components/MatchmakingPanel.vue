@@ -7,7 +7,7 @@
     <template #header>
       <NFlex justify="space-between" align="center">
         <span class="panel-title">牵线匹配</span>
-        <NButton quaternary circle size="small" @click="handleClose">
+        <NButton quaternary circle size="small" @click="$emit('close')">
           <template #icon>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -52,10 +52,10 @@
 
       <!-- 操作按钮 -->
       <NFlex :size="12" class="action-buttons">
-        <NButton type="primary" @click="handleSendRequest" :loading="sending">
+        <NButton type="primary" @click="$emit('sendRequest')" :loading="sending">
           发送匹配请求
         </NButton>
-        <NButton type="error" @click="handleCancelMatch">
+        <NButton type="error" @click="$emit('cancelMatch')">
           取消匹配
         </NButton>
       </NFlex>
@@ -79,23 +79,11 @@ defineProps<{
   sending: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   close: []
   sendRequest: []
   cancelMatch: []
 }>()
-
-const handleClose = () => {
-  emit('close')
-}
-
-const handleSendRequest = () => {
-  emit('sendRequest')
-}
-
-const handleCancelMatch = () => {
-  emit('cancelMatch')
-}
 </script>
 
 <style scoped>

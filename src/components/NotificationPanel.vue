@@ -8,54 +8,19 @@
     <n-drawer-content title="通知中心" closable>
       <!-- Tab 切换 -->
       <n-tabs v-model:value="activeTab" type="segment" animated>
-        <n-tab-pane name="inbox" tab="收件箱">
-          <div v-if="inboxNotifications.length === 0" class="empty-state">
-            <n-empty description="暂无通知" />
+        <n-tab-pane
+          v-for="tab in tabs"
+          :key="tab.name"
+          :name="tab.name"
+          :tab="tab.label"
+        >
+          <div v-if="tab.notifications.length === 0" class="empty-state">
+            <n-empty :description="tab.emptyText" />
           </div>
 
           <n-list v-else hoverable clickable>
             <n-list-item
-              v-for="notification in inboxNotifications"
-              :key="notification.id"
-              @click="handleNotificationClick(notification)"
-              :class="{ unread: !notification.isRead }"
-            >
-              <div class="notification-item">
-                <div class="notification-header">
-                  <n-tag :type="getNotificationType(notification.type)" size="small">
-                    {{ getNotificationTitle(notification.type) }}
-                  </n-tag>
-                  <span class="notification-time">
-                    {{ formatTime(notification.createdAt) }}
-                  </span>
-                </div>
-
-                <div class="notification-content">
-                  <div class="notification-title">
-                    {{ notification.title }}
-                  </div>
-                  <div class="notification-message">
-                    {{ notification.content }}
-                  </div>
-                  <div class="notification-link">
-                    <a @click.stop="handleOpenInvitationManagement">点击进入列表</a>
-                  </div>
-                </div>
-
-                <div v-if="!notification.isRead" class="unread-indicator"></div>
-              </div>
-            </n-list-item>
-          </n-list>
-        </n-tab-pane>
-
-        <n-tab-pane name="sent" tab="发件箱">
-          <div v-if="sentNotifications.length === 0" class="empty-state">
-            <n-empty description="暂无发送记录" />
-          </div>
-
-          <n-list v-else hoverable clickable>
-            <n-list-item
-              v-for="notification in sentNotifications"
+              v-for="notification in tab.notifications"
               :key="notification.id"
               @click="handleNotificationClick(notification)"
               :class="{ unread: !notification.isRead }"
@@ -99,12 +64,12 @@
         <div v-if="selectedNotification" class="notification-detail">
           <div class="detail-row">
             <span class="detail-label">{{ activeTab === 'inbox' ? '发件人：' : '收件人：' }}</span>
-            <span class="detail-value">{{ activeTab === 'inbox' ? selectedNotification.senderName : selectedNotification.userId }}</span>
+            <span class="detail-value">{{ activeTab === 'inbox' ? selectedNotification.senderName : selectedNotification.userName }}</span>
           </div>
 
           <div class="detail-row">
             <span class="detail-label">{{ activeTab === 'inbox' ? '接收时间：' : '发送时间：' }}</span>
-            <span class="detail-value">{{ formatTime(selectedNotification.createdAt) }}</span>
+            <span class="detail-value">{{ formatDateTime(selectedNotification.createdAt) }}</span>
           </div>
 
           <div class="detail-row">
@@ -143,6 +108,7 @@ import {
 } from 'naive-ui'
 import { useMatchmakingStore, type Notification } from '@/stores/matchmaking'
 import { useAuthStore } from '@/stores/auth'
+import { formatRelativeTime, formatDateTime } from '@/lib/format'
 
 const props = defineProps<{
   show: boolean
@@ -183,28 +149,26 @@ watch(() => props.show, async (newShow) => {
 watch(activeTab, async (newTab) => {
   if (newTab === 'sent' && currentUserId.value) {
     await matchmakingStore.loadSentNotifications(currentUserId.value)
-  } else if (newTab === 'inbox' && currentUserId.value) {
-    await matchmakingStore.loadInboxNotifications(currentUserId.value)
   }
 })
 
-// 收件箱：当前用户收到的通知
-const inboxNotifications = computed(() => {
-  return allNotifications.value.filter(n => n.userId === currentUserId.value)
-})
-
-// 发件箱：当前用户发出的通知（去重：相同 relatedApplicationId + userId 只保留一条）
-const sentNotifications = computed(() => {
-  const sent = allNotifications.value.filter(n => n.senderId === currentUserId.value)
-  // 去重：同一个牵线申请发给同一个收件人只保留一条
-  const seen = new Set<string>()
-  return sent.filter(n => {
-    const key = `${n.relatedApplicationId}_${n.userId}`
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-})
+// Tab 配置（收件箱 + 发件箱）
+// 红娘邀请后只产生 2 条通知（A、B 各一条），发件箱通过 sender_id 过滤展示
+// 数据层已保证一次邀请只产生 2 条通知，无需前端去重
+const tabs = computed(() => [
+  {
+    name: 'inbox',
+    label: '收件箱',
+    emptyText: '暂无通知',
+    notifications: allNotifications.value.filter(n => n.userId === currentUserId.value)
+  },
+  {
+    name: 'sent',
+    label: '发件箱',
+    emptyText: '暂无发送记录',
+    notifications: allNotifications.value.filter(n => n.senderId === currentUserId.value)
+  }
+])
 
 const handleNotificationClick = async (notification: Notification) => {
   selectedNotification.value = notification
@@ -250,20 +214,8 @@ const getNotificationTitle = (type: string) => {
   }
 }
 
-const formatTime = (date: Date) => {
-  const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes}分钟前`
-  if (hours < 24) return `${hours}小时前`
-  if (days < 7) return `${days}天前`
-
-  return date.toLocaleDateString('zh-CN')
-}
+// 使用统一的时间格式化工具函数
+const formatTime = formatRelativeTime
 </script>
 
 <style scoped>

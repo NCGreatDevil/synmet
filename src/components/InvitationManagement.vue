@@ -45,22 +45,35 @@
                 >
                   {{ app.userA.name }}
                 </div>
+                <!-- 用户A的确认状态显示在头像下方 -->
+                <div v-if="app.applicationStatus !== 'confirmed'" class="user-status-tag">
+                  <n-tag :type="getUserStatusType(app.userA.status)" size="tiny">
+                    {{ getUserStatusText(app.userA.status) }}
+                  </n-tag>
+                </div>
               </div>
 
-              <!-- 连线状态 -->
+              <!-- 连线状态（中间） -->
               <div class="connection-line">
+                <!-- 双方都接受后显示"双方已接受" -->
+                <div v-if="app.applicationStatus === 'confirmed'" class="center-status confirmed">
+                  双方已接受
+                </div>
+                <!-- 双方意见不一 -->
+                <div v-else-if="app.applicationStatus === 'disagreed'" class="center-status disagreed">
+                  双方意见不一
+                </div>
+                <!-- 双方已拒绝 -->
+                <div v-else-if="app.applicationStatus === 'both_rejected'" class="center-status rejected">
+                  双方已拒绝
+                </div>
                 <div
                   class="line"
                   :class="{
                     'line-confirmed': app.applicationStatus === 'confirmed',
-                    'line-rejected': app.applicationStatus === 'rejected'
+                    'line-rejected': app.applicationStatus === 'disagreed' || app.applicationStatus === 'both_rejected'
                   }"
                 ></div>
-                <div class="status-badge">
-                  <n-tag :type="getStatusType(app.applicationStatus)" size="small">
-                    {{ getStatusText(app.applicationStatus) }}
-                  </n-tag>
-                </div>
               </div>
 
               <!-- 用户B -->
@@ -82,31 +95,31 @@
                 >
                   {{ app.userB.name }}
                 </div>
+                <!-- 用户B的确认状态显示在头像下方 -->
+                <div v-if="app.userA.status !== 'accepted' || app.userB.status !== 'accepted'" class="user-status-tag">
+                  <n-tag :type="getUserStatusType(app.userB.status)" size="tiny">
+                    {{ getUserStatusText(app.userB.status) }}
+                  </n-tag>
+                </div>
               </div>
             </div>
 
-            <!-- 操作按钮（仅被邀请用户且状态为待确认时显示） -->
+            <!-- 操作按钮（仅被邀请用户且自己还未操作时显示） -->
             <div v-if="canOperate(app)" class="invitation-actions">
               <n-button
                 type="success"
                 size="small"
-                @click="handleAccept(app.id)"
+                @click="handleResponse(app.id, 'accept')"
               >
                 接受邀请
               </n-button>
               <n-button
                 type="error"
                 size="small"
-                @click="handleReject(app.id)"
+                @click="handleResponse(app.id, 'reject')"
               >
                 拒绝邀请
               </n-button>
-            </div>
-
-            <div v-else class="invitation-status">
-              <n-tag :type="getStatusType(app.applicationStatus)" size="small">
-                {{ getStatusText(app.applicationStatus) }}
-              </n-tag>
             </div>
           </div>
         </n-list-item>
@@ -192,6 +205,7 @@ import {
 } from 'naive-ui'
 import { useMatchmakingStore, type MatchApplication } from '@/stores/matchmaking'
 import { useAuthStore } from '@/stores/auth'
+import { formatDate } from '@/lib/format'
 
 const props = defineProps<{
   show: boolean
@@ -227,24 +241,50 @@ watch(() => props.show, async (newShow) => {
 
 // 获取当前用户相关的邀请列表
 const applications = computed(() => {
-  return matchmakingStore.getUserApplications(currentUserId.value, isMatchmaker.value)
+  const apps = matchmakingStore.getUserApplications(currentUserId.value, isMatchmaker.value)
+  
+  // 非红娘用户：隐藏对方的真实状态，直到双方都操作后才显示
+  if (!isMatchmaker.value) {
+    return apps.map(app => {
+      const isUserA = app.userA.id === currentUserId.value
+      const isUserB = app.userB.id === currentUserId.value
+      
+      // 判断双方是否都已操作（状态都不是 pending）
+      const bothResponded = app.userA.status !== 'pending' && app.userB.status !== 'pending'
+      
+      // 为对方用户创建掩码状态
+      const maskedUserA = isUserA 
+        ? app.userA 
+        : { ...app.userA, status: bothResponded ? app.userA.status : 'pending' as const }
+      
+      const maskedUserB = isUserB 
+        ? app.userB 
+        : { ...app.userB, status: bothResponded ? app.userB.status : 'pending' as const }
+      
+      return {
+        ...app,
+        userA: maskedUserA,
+        userB: maskedUserB
+      }
+    })
+  }
+  
+  return apps
 })
 
 // 判断当前用户是否可以操作（接受/拒绝）
 // 红娘无操作按钮，只有被邀请的用户可以操作
+// 只要当前用户自己还未操作（status === 'pending'），就可以操作
 const canOperate = (app: MatchApplication) => {
   // 红娘不能操作
   if (isMatchmaker.value) return false
 
-  // 只有被邀请的用户可以操作，且申请状态为待确认
-  if (app.applicationStatus !== 'pending') return false
-
   const isUserA = app.userA.id === currentUserId.value
   const isUserB = app.userB.id === currentUserId.value
 
-  // 如果当前用户是A，且A还未确认，可以操作
+  // 当前用户是A，且A还未操作
   if (isUserA && app.userA.status === 'pending') return true
-  // 如果当前用户是B，且B还未确认，可以操作
+  // 当前用户是B，且B还未操作
   if (isUserB && app.userB.status === 'pending') return true
 
   return false
@@ -255,43 +295,38 @@ const handleUserClick = (user: any) => {
   showUserModal.value = true
 }
 
-const handleAccept = async (applicationId: string) => {
+const handleResponse = async (applicationId: string, action: 'accept' | 'reject') => {
   try {
-    await matchmakingStore.acceptInvitation(applicationId, currentUserId.value, currentUserName.value)
-    message.success('已接受邀请')
+    const actionMap = {
+      accept: {
+        method: matchmakingStore.acceptInvitation,
+        success: '已接受邀请',
+        error: '接受邀请失败'
+      },
+      reject: {
+        method: matchmakingStore.rejectInvitation,
+        success: '已拒绝邀请',
+        error: '拒绝邀请失败'
+      }
+    }
+
+    const config = actionMap[action]
+    await config.method(applicationId, currentUserId.value, currentUserName.value)
+    message.success(config.success)
     // 重新加载数据
     await matchmakingStore.loadUserApplications(currentUserId.value, isMatchmaker.value)
   } catch (error) {
-    console.error('接受邀请失败:', error)
-    message.error('接受邀请失败')
+    console.error(action === 'accept' ? '接受邀请失败:' : '拒绝邀请失败:', error)
+    message.error(action === 'accept' ? '接受邀请失败' : '拒绝邀请失败')
   }
 }
 
-const handleReject = async (applicationId: string) => {
-  try {
-    await matchmakingStore.rejectInvitation(applicationId, currentUserId.value, currentUserName.value)
-    message.success('已拒绝邀请')
-    // 重新加载数据
-    await matchmakingStore.loadUserApplications(currentUserId.value, isMatchmaker.value)
-  } catch (error) {
-    console.error('拒绝邀请失败:', error)
-    message.error('拒绝邀请失败')
-  }
-}
-
-const formatDate = (date: Date) => {
-  return new Date(date).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  })
-}
-
-const getStatusType = (status: string) => {
+/** 单个用户确认状态标签类型 */
+const getUserStatusType = (status: string) => {
   switch (status) {
     case 'pending':
       return 'warning'
-    case 'confirmed':
+    case 'accepted':
       return 'success'
     case 'rejected':
       return 'error'
@@ -300,12 +335,13 @@ const getStatusType = (status: string) => {
   }
 }
 
-const getStatusText = (status: string) => {
+/** 单个用户确认状态标签文案 */
+const getUserStatusText = (status: string) => {
   switch (status) {
     case 'pending':
       return '待确认'
-    case 'confirmed':
-      return '已确认'
+    case 'accepted':
+      return '已接受'
     case 'rejected':
       return '已拒绝'
     default:
@@ -368,6 +404,7 @@ const getGenderText = (gender: number) => {
   align-items: center;
   cursor: pointer;
   transition: transform 0.2s;
+  min-width: 80px;
 }
 
 .user-card:hover {
@@ -383,6 +420,11 @@ const getGenderText = (gender: number) => {
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: center;
+}
+
+/* 用户确认状态标签（头像下方） */
+.user-status-tag {
+  margin-top: 6px;
 }
 
 /* 灰色状态（待确认） */
@@ -425,8 +467,23 @@ const getGenderText = (gender: number) => {
   background-color: #d03050;
 }
 
-.status-badge {
+/* 连线中间的状态文字 */
+.center-status {
+  font-size: 13px;
+  font-weight: 600;
   margin-top: 4px;
+}
+
+.center-status.confirmed {
+  color: #18a058;
+}
+
+.center-status.disagreed {
+  color: #d03050;
+}
+
+.center-status.rejected {
+  color: #d03050;
 }
 
 .invitation-actions {

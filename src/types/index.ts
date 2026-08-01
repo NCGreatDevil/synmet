@@ -13,4 +13,6 @@ export interface UserData {
   popularity: number
   gender?: number
   age?: number | null
+  isOnline?: boolean          // 在线状态（用于 computeStatus 重新计算）
+  lastActiveAt?: string       // 最后活跃时间 ISO 字符串（用于 computeStatus 重新计算）
 }

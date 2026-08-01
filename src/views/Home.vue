@@ -44,11 +44,7 @@ const authStore = useAuthStore()
 
 /** 处理退出登录 */
 const handleLogout = async () => {
-  try {
-    await authStore.logout()
-    message.success('退出成功')
-  } catch {
-    message.error('退出失败')
-  }
+  await authStore.logout()
+  message.success('退出成功')
 }
 </script>

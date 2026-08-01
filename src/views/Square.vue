@@ -50,8 +50,8 @@
     <MatchmakingPanel
       v-if="isMatchmaker"
       :show="showMatchPanel"
-      :user-a="selectedEdge?.userA"
-      :user-b="selectedEdge?.userB"
+      :user-a="selectedEdge?.userA ?? null"
+      :user-b="selectedEdge?.userB ?? null"
       :sending="sendingRequest"
       @close="handleClosePanel"
       @send-request="handleSendRequest"

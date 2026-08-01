@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import pb from '@/lib/pocketbase'
-import { getUserAvatarUrl } from '@/lib/pocketbase'
+import pb, { getUserAvatarUrl } from '@/lib/pocketbase'
+import { useAuthStore } from './auth'
 
 // 牵线申请数据结构
 export interface MatchApplication {
@@ -30,7 +30,7 @@ export interface MatchApplication {
     status: 'pending' | 'accepted' | 'rejected'
     confirmTime?: Date
   }
-  applicationStatus: 'pending' | 'confirmed' | 'rejected'
+  applicationStatus: 'pending' | 'confirmed' | 'disagreed' | 'both_rejected'
   applyTime: Date
 }
 
@@ -40,6 +40,7 @@ export interface Notification {
   senderId: string          // 发件人ID
   senderName: string        // 发件人姓名
   userId: string            // 收件人ID
+  userName: string          // 收件人姓名
   type: 'matchmaking_invite' | 'matchmaking_accepted' | 'matchmaking_rejected'
   title: string
   content: string
@@ -48,79 +49,113 @@ export interface Notification {
   createdAt: Date
 }
 
-// 状态映射：数据库数字 <-> 前端字符串
-const statusFromString = (num: number): 'pending' | 'accepted' | 'rejected' => {
-  switch (num) {
-    case 0: return 'pending'
-    case 1: return 'accepted'
-    case 2: return 'rejected'
-    default: return 'pending'
-  }
+// 通用数字到字符串映射工具函数
+const mapNumberTo = <T>(num: number, mapping: Record<number, T>, fallback: T): T => {
+  return mapping[num] ?? fallback
 }
 
-const applicationStatusFromString = (num: number): 'pending' | 'confirmed' | 'rejected' => {
-  switch (num) {
-    case 0: return 'pending'
-    case 1: return 'confirmed'
-    case 2: return 'rejected'
-    default: return 'pending'
-  }
+// 状态映射：数据库数字 <-> 前端字符串
+const statusFromString = (num: number): 'pending' | 'accepted' | 'rejected' => {
+  return mapNumberTo(num, {
+    0: 'pending',
+    1: 'accepted',
+    2: 'rejected'
+  }, 'pending')
+}
+
+const applicationStatusFromString = (num: number): 'pending' | 'confirmed' | 'disagreed' | 'both_rejected' => {
+  return mapNumberTo(num, {
+    0: 'pending',
+    1: 'confirmed',
+    3: 'disagreed',
+    4: 'both_rejected'
+  }, 'pending')
 }
 
 const notificationTypeFromString = (num: number): 'matchmaking_invite' | 'matchmaking_accepted' | 'matchmaking_rejected' => {
-  switch (num) {
-    case 0: return 'matchmaking_invite'
-    case 1: return 'matchmaking_accepted'
-    case 2: return 'matchmaking_rejected'
-    default: return 'matchmaking_invite'
+  return mapNumberTo(num, {
+    0: 'matchmaking_invite',
+    1: 'matchmaking_accepted',
+    2: 'matchmaking_rejected'
+  }, 'matchmaking_invite')
+}
+
+// 获取用户显示名称（优先级：username > name > email > fallback）
+const pickDisplayName = (user: any, fallback: string): string => {
+  return user?.username || user?.name || user?.email || fallback
+}
+
+// 批量获取用户标签（避免 N+1 查询）
+const batchGetUserTags = async (userIds: string[]): Promise<Map<string, string[]>> => {
+  if (userIds.length === 0) return new Map()
+  try {
+    const tags = await pb.collection('user_tags').getFullList({
+      filter: userIds.map(id => `user_id = "${id}"`).join(' || ')
+    })
+    const tagMap = new Map<string, string[]>()
+    for (const tag of tags) {
+      if (!tagMap.has(tag.user_id)) {
+        tagMap.set(tag.user_id, [])
+      }
+      tagMap.get(tag.user_id)!.push(tag.tag_name)
+    }
+    return tagMap
+  } catch {
+    return new Map(userIds.map(id => [id, []]))
   }
 }
 
-// 获取用户标签
-const getUserTags = async (userId: string): Promise<string[]> => {
+// 批量获取用户信息（避免 N+1 查询，替代 expand）
+const batchGetUsers = async (userIds: string[]): Promise<Map<string, any>> => {
+  const uniqueIds = [...new Set(userIds.filter(Boolean))]
+  if (uniqueIds.length === 0) return new Map()
   try {
-    const tags = await pb.collection('user_tags').getFullList({
-      filter: `user_id = "${userId}"`
-    })
-    return tags.map(t => t.tag_name)
-  } catch {
-    return []
+    const filter = uniqueIds.map(id => `id = "${id}"`).join(' || ')
+    const records = await pb.collection('users').getFullList({ filter })
+    const userMap = new Map<string, any>()
+    for (const record of records) {
+      userMap.set(record.id, record)
+    }
+    return userMap
+  } catch (error) {
+    console.error('批量获取用户信息失败:', error)
+    return new Map()
   }
 }
 
 // 转换数据库记录为前端接口
-const convertApplication = async (record: any): Promise<MatchApplication> => {
-  const expand = record.expand || {}
-  const userA = expand.user_a_id || {}
-  const userB = expand.user_b_id || {}
-  const matchmaker = expand.matchmaker_id || {}
-
-  const userATags = await getUserTags(userA.id)
-  const userBTags = await getUserTags(userB.id)
+const convertApplication = async (
+  record: any,
+  tagMap: Map<string, string[]>,
+  userMap: Map<string, any>
+): Promise<MatchApplication> => {
+  const matchmaker = userMap.get(record.matchmaker_id) || {}
+  const userA = userMap.get(record.user_a_id) || {}
+  const userB = userMap.get(record.user_b_id) || {}
 
   return {
     id: record.id,
     matchmakerId: record.matchmaker_id,
-    matchmakerName: matchmaker.username || matchmaker.name || matchmaker.email || '红娘',
+    matchmakerName: pickDisplayName(matchmaker, '红娘'),
     userA: {
-      id: userA.id,
-      name: userA.username || userA.name || userA.email || '用户A',
+      id: userA.id || record.user_a_id,
+      name: pickDisplayName(userA, '用户A'),
       avatar: getUserAvatarUrl(userA),
       gender: userA.gender,
       age: userA.age,
       bio: userA.bio,
-      tags: userATags,
+      tags: tagMap.get(record.user_a_id) || [],
       status: statusFromString(record.user_a_status),
       confirmTime: record.user_a_confirm_time ? new Date(record.user_a_confirm_time) : undefined
     },
     userB: {
-      id: userB.id,
-      name: userB.username || userB.name || userB.email || '用户B',
+      id: userB.id || record.user_b_id,
+      name: pickDisplayName(userB, '用户B'),
       avatar: getUserAvatarUrl(userB),
       gender: userB.gender,
       age: userB.age,
       bio: userB.bio,
-      tags: userBTags,
+      tags: tagMap.get(record.user_b_id) || [],
       status: statusFromString(record.user_b_status),
       confirmTime: record.user_b_confirm_time ? new Date(record.user_b_confirm_time) : undefined
     },
@@ -129,22 +164,24 @@ const convertApplication = async (record: any): Promise<MatchApplication> => {
   }
 }
 
-// 转换通知记录
-const convertNotification = (record: any): Notification => {
-  const expand = record.expand || {}
-  const sender = expand.sender_id || {}
+// 转换通知记录（从 userMap 中获取发件人/收件人信息）
+const convertNotification = (record: any, userMap: Map<string, any>): Notification => {
+  const sender = userMap.get(record.sender_id) || {}
+  const recipient = userMap.get(record.user_id) || {}
 
   return {
     id: record.id,
     senderId: record.sender_id,
-    senderName: sender.username || sender.name || sender.email || '用户',
+    senderName: pickDisplayName(sender, '用户'),
     userId: record.user_id,
+    userName: pickDisplayName(recipient, '用户'),
     type: notificationTypeFromString(record.notification_type),
     title: getNotificationTitle(record.notification_type),
     content: record.content,
     relatedApplicationId: record.related_id || '',
     isRead: record.is_read,
-    createdAt: new Date(record.created)
+    // PocketBase 系统字段 created 可能缺失，做容错
+    createdAt: record.created ? new Date(record.created) : new Date()
   }
 }
 
@@ -164,9 +201,11 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
   // 通知列表
   const notifications = ref<Notification[]>([])
 
-  // 计算未读通知数量（收件箱）
+  // 计算未读通知数量（仅收件箱，发件箱不显示红点）
   const unreadCount = computed(() => {
-    return notifications.value.filter(n => !n.isRead).length
+    const authStore = useAuthStore()
+    const currentUserId = authStore.currentUser?.id || ''
+    return notifications.value.filter(n => !n.isRead && n.userId === currentUserId).length
   })
 
   // 发送匹配邀请
@@ -177,6 +216,12 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
     userB: any
   ): Promise<string> => {
     try {
+      // 确保 matchmakerId 是用户ID而不是邮箱
+      if (matchmakerId.includes('@')) {
+        console.error('错误：matchmakerId 应该是用户ID，而不是邮箱:', matchmakerId)
+        throw new Error('matchmakerId 必须是用户ID，不能是邮箱')
+      }
+
       // 创建牵线申请
       const application = await pb.collection('matchmaker_applications').create({
         matchmaker_id: matchmakerId,
@@ -188,45 +233,24 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
         apply_time: new Date().toISOString()
       })
 
-      // 给用户A发送收件通知
-      await pb.collection('notifications').create({
-        sender_id: matchmakerId,
-        user_id: userA.id,
-        notification_type: 0,
-        related_id: application.id,
-        content: `${matchmakerName}邀请您参加匹配，点击进入匹配列表。`,
-        is_read: false
-      })
-
-      // 给用户B发送收件通知
-      await pb.collection('notifications').create({
-        sender_id: matchmakerId,
-        user_id: userB.id,
-        notification_type: 0,
-        related_id: application.id,
-        content: `${matchmakerName}邀请您参加匹配，点击进入匹配列表。`,
-        is_read: false
-      })
-
-      // 红娘发件箱：发给A的记录
-      await pb.collection('notifications').create({
-        sender_id: matchmakerId,
-        user_id: userA.id,
-        notification_type: 0,
-        related_id: application.id,
-        content: `你邀请${userA.name}参加匹配，点击进入匹配列表。`,
-        is_read: false
-      })
-
-      // 红娘发件箱：发给B的记录
-      await pb.collection('notifications').create({
-        sender_id: matchmakerId,
-        user_id: userB.id,
-        notification_type: 0,
-        related_id: application.id,
-        content: `你邀请${userB.name}参加匹配，点击进入匹配列表。`,
-        is_read: false
-      })
+      // 只向被邀请双方各发 1 条通知（共 2 条）
+      // sender_id = 红娘ID，user_id = 被邀请用户ID
+      // 红娘发件箱通过 sender_id 过滤展示，被邀请用户收件箱通过 user_id 过滤展示
+      // 不再单独为发件箱创建记录，避免数据冗余
+      // 注意：必须顺序 await，不能用 Promise.all
+      // PocketBase JS SDK 默认开启 autoCancellation，并发请求会互相取消导致 AbortError
+      const inviteContent = `${matchmakerName}邀请您参加匹配，点击进入匹配列表。`
+      const recipients = [userA, userB]
+      for (const user of recipients) {
+        await pb.collection('notifications').create({
+          sender_id: matchmakerId,
+          user_id: user.id,
+          notification_type: 0,
+          related_id: application.id,
+          content: inviteContent,
+          is_read: false
+        })
+      }
 
       return application.id
     } catch (error) {
@@ -236,12 +260,13 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
   }
 
   // 接受邀请（用户调用）
+  // 逻辑：只更新当前用户的状态，application_status 在双方都操作后才更新
   const acceptInvitation = async (applicationId: string, userId: string, userName: string) => {
     try {
       // 获取申请记录
       const application = await pb.collection('matchmaker_applications').getOne(applicationId)
 
-      // 更新用户状态
+      // 更新当前用户状态为已接受
       const updateData: any = {}
       if (application.user_a_id === userId) {
         updateData.user_a_status = 1
@@ -251,12 +276,19 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
         updateData.user_b_confirm_time = new Date().toISOString()
       }
 
-      // 检查是否双方都已接受
-      const newUserAStatus = application.user_a_id === userId ? 1 : application.user_a_status
-      const newUserBStatus = application.user_b_id === userId ? 1 : application.user_b_status
+      // 计算双方最终状态
+      const finalA = application.user_a_id === userId ? 1 : application.user_a_status
+      const finalB = application.user_b_id === userId ? 1 : application.user_b_status
 
-      if (newUserAStatus === 1 && newUserBStatus === 1) {
-        updateData.application_status = 1
+      // 只有双方都操作后才更新 application_status
+      if (finalA !== 0 && finalB !== 0) {
+        if (finalA === 1 && finalB === 1) {
+          updateData.application_status = 1  // 双方已接受
+        } else if (finalA === 2 && finalB === 2) {
+          updateData.application_status = 4  // 双方已拒绝
+        } else {
+          updateData.application_status = 3  // 双方意见不一
+        }
       }
 
       await pb.collection('matchmaker_applications').update(applicationId, updateData)
@@ -277,22 +309,36 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
   }
 
   // 拒绝邀请（用户调用）
+  // 逻辑：只更新当前用户的状态为已拒绝，不立即更新 application_status
+  // 另一方看不到拒绝状态，仍可正常操作；双方都操作后才更新 application_status
   const rejectInvitation = async (applicationId: string, userId: string, userName: string) => {
     try {
       // 获取申请记录
       const application = await pb.collection('matchmaker_applications').getOne(applicationId)
 
-      // 更新用户状态
-      const updateData: any = {
-        application_status: 2
-      }
-
+      // 只更新当前用户状态为已拒绝，不设置 application_status
+      const updateData: any = {}
       if (application.user_a_id === userId) {
         updateData.user_a_status = 2
         updateData.user_a_confirm_time = new Date().toISOString()
       } else if (application.user_b_id === userId) {
         updateData.user_b_status = 2
         updateData.user_b_confirm_time = new Date().toISOString()
+      }
+
+      // 计算双方最终状态
+      const finalA = application.user_a_id === userId ? 2 : application.user_a_status
+      const finalB = application.user_b_id === userId ? 2 : application.user_b_status
+
+      // 只有双方都操作后才更新 application_status
+      if (finalA !== 0 && finalB !== 0) {
+        if (finalA === 1 && finalB === 1) {
+          updateData.application_status = 1  // 双方已接受
+        } else if (finalA === 2 && finalB === 2) {
+          updateData.application_status = 4  // 双方已拒绝
+        } else {
+          updateData.application_status = 3  // 双方意见不一
+        }
       }
 
       await pb.collection('matchmaker_applications').update(applicationId, updateData)
@@ -324,29 +370,47 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
     }
   }
 
-  // 加载用户的收件箱
+  // 加载用户的收件箱（追加模式，不覆盖已有数据）
   const loadInboxNotifications = async (userId: string) => {
     try {
       const records = await pb.collection('notifications').getFullList({
         filter: `user_id = "${userId}"`,
-        sort: '-created',
-        expand: 'sender_id'
+        sort: '-id'
       })
-      notifications.value = records.map(convertNotification)
+      // 批量获取关联用户信息（替代 expand）
+      const userIds = records.flatMap(r => [r.sender_id, r.user_id])
+      const userMap = await batchGetUsers(userIds)
+      const newItems = records.map(r => convertNotification(r, userMap))
+      // 追加不重复的记录
+      const existingIds = new Set(notifications.value.map(n => n.id))
+      for (const item of newItems) {
+        if (!existingIds.has(item.id)) {
+          notifications.value.push(item)
+        }
+      }
     } catch (error) {
       console.error('加载收件箱失败:', error)
     }
   }
 
-  // 加载用户的发件箱
+  // 加载用户的发件箱（追加模式，不覆盖已有数据）
   const loadSentNotifications = async (userId: string) => {
     try {
       const records = await pb.collection('notifications').getFullList({
         filter: `sender_id = "${userId}"`,
-        sort: '-created',
-        expand: 'sender_id'
+        sort: '-id'
       })
-      notifications.value = records.map(convertNotification)
+      // 批量获取关联用户信息（替代 expand）
+      const userIds = records.flatMap(r => [r.sender_id, r.user_id])
+      const userMap = await batchGetUsers(userIds)
+      const newItems = records.map(r => convertNotification(r, userMap))
+      // 追加不重复的记录
+      const existingIds = new Set(notifications.value.map(n => n.id))
+      for (const item of newItems) {
+        if (!existingIds.has(item.id)) {
+          notifications.value.push(item)
+        }
+      }
     } catch (error) {
       console.error('加载发件箱失败:', error)
     }
@@ -366,11 +430,21 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
 
       const records = await pb.collection('matchmaker_applications').getFullList({
         filter,
-        sort: '-apply_time',
-        expand: 'matchmaker_id,user_a_id,user_b_id'
+        sort: '-apply_time'
       })
 
-      applications.value = await Promise.all(records.map(convertApplication))
+      // 批量获取所有用户ID（包括红娘、用户A、用户B）
+      const allUserIds = records.flatMap(r => [r.matchmaker_id, r.user_a_id, r.user_b_id])
+      
+      // 批量获取用户信息和标签，避免 N+1 查询
+      const [tagMap, userMap] = await Promise.all([
+        batchGetUserTags(records.flatMap(r => [r.user_a_id, r.user_b_id])),
+        batchGetUsers(allUserIds)
+      ])
+
+      applications.value = await Promise.all(
+        records.map(r => convertApplication(r, tagMap, userMap))
+      )
     } catch (error) {
       console.error('加载牵线申请失败:', error)
     }

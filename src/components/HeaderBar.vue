@@ -61,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { NFlex, NMarquee, NDropdown, NAvatar, NButton, NBadge } from 'naive-ui'
 import { storeToRefs } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
@@ -80,6 +80,31 @@ const unreadCount = computed(() => matchmakingStore.unreadCount)
 // 面板显示状态
 const showNotificationPanel = ref(false)
 const showInvitationManagement = ref(false)
+
+// 轮询定时器
+let pollTimer: ReturnType<typeof setInterval> | null = null
+
+// 页面加载时自动拉取通知，并设置 1 分钟轮询
+onMounted(async () => {
+  const userId = authStore.currentUser?.id
+  if (userId) {
+    await matchmakingStore.loadInboxNotifications(userId)
+  }
+  // 每 1 分钟轮询一次新通知
+  pollTimer = setInterval(async () => {
+    const uid = authStore.currentUser?.id
+    if (uid) {
+      await matchmakingStore.loadInboxNotifications(uid)
+    }
+  }, 60 * 1000)
+})
+
+onUnmounted(() => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+})
 
 const menuOptions = [
   { label: '我的', key: 'profile' },

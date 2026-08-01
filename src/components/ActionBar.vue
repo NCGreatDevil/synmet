@@ -17,7 +17,7 @@
             {{ userCount }}
           </div>
         </template>
-        在线人数
+        总人数
       </NTooltip>
     </div>
 
