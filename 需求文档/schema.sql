@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS `chat_groups` (
   `group_name` VARCHAR(100) NOT NULL COMMENT '群组名称',
   `group_type` TINYINT NOT NULL COMMENT '群组类型：0-大群（红娘+双方用户），1-红娘对策群（主红娘+辅助红娘）',
   `group_status` TINYINT NOT NULL DEFAULT 1 COMMENT '群组状态：0-已解散，1-正常',
+  `notice` TEXT NULL COMMENT '群公告（富文本，当前仅支持文字和emoji）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -182,6 +183,7 @@ CREATE TABLE IF NOT EXISTS `messages` (
 
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '通知唯一标识',
+  `sender_id` BIGINT NOT NULL COMMENT '发件人ID',
   `user_id` BIGINT NOT NULL COMMENT '接收用户ID',
   `notification_type` TINYINT NOT NULL COMMENT '通知类型：0-牵线邀请，1-牵线同意，2-牵线拒绝，3-消息提醒，4-系统通知',
   `related_id` BIGINT NULL COMMENT '关联业务ID（如申请ID、消息ID）',
@@ -190,9 +192,11 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   `read_time` DATETIME NULL COMMENT '阅读时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
+  KEY `idx_sender_id` (`sender_id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_notification_type` (`notification_type`),
   KEY `idx_is_read` (`is_read`),
   KEY `idx_user_is_read` (`user_id`, `is_read`),
+  CONSTRAINT `fk_notifications_sender` FOREIGN KEY (`sender_id`) REFERENCES `users` (`id`),
   CONSTRAINT `fk_notifications_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='通知表';

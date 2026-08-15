@@ -239,6 +239,7 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
       // 不再单独为发件箱创建记录，避免数据冗余
       // 注意：必须顺序 await，不能用 Promise.all
       // PocketBase JS SDK 默认开启 autoCancellation，并发请求会互相取消导致 AbortError
+      const now = new Date().toISOString()
       const inviteContent = `${matchmakerName}邀请您参加匹配，点击进入匹配列表。`
       const recipients = [userA, userB]
       for (const user of recipients) {
@@ -248,7 +249,9 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
           notification_type: 0,
           related_id: application.id,
           content: inviteContent,
-          is_read: false
+          is_read: false,
+          created: now,
+          updated: now
         })
       }
 
@@ -259,8 +262,86 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
     }
   }
 
+  // 创建沟通会话和群组（双方都接受后调用）
+  const createSessionAndGroups = async (application: any) => {
+    try {
+      // 获取用户信息（用于群名和系统消息）
+      const userIds = [application.matchmaker_id, application.user_a_id, application.user_b_id]
+      const userMap = await batchGetUsers(userIds)
+      const userAName = pickDisplayName(userMap.get(application.user_a_id), '用户A')
+      const userBName = pickDisplayName(userMap.get(application.user_b_id), '用户B')
+
+      // 1. 创建沟通会话
+      const session = await pb.collection('communication_sessions').create({
+        application_id: application.id,
+        user_a_id: application.user_a_id,
+        user_b_id: application.user_b_id,
+        main_matchmaker_id: application.matchmaker_id,
+        session_status: 1,
+        start_time: new Date().toISOString()
+      })
+
+      // 2. 创建大群（group_type=1）
+      const groupName = `${userAName}与${userBName}的沟通群`
+      const group = await pb.collection('chat_groups').create({
+        session_id: session.id,
+        group_name: groupName,
+        group_type: 1,
+        group_status: 1
+      })
+
+      // 3. 添加群成员（必须顺序 await，避免并发问题）
+      const now = new Date().toISOString()
+      // 红娘为群主
+      await pb.collection('chat_group_members').create({
+        group_id: group.id,
+        user_id: application.matchmaker_id,
+        member_role: 2,  // 群主
+        join_time: now,
+        is_active: 1
+      })
+      // 用户A为普通成员
+      await pb.collection('chat_group_members').create({
+        group_id: group.id,
+        user_id: application.user_a_id,
+        member_role: 1,  // 普通成员
+        join_time: now,
+        is_active: 1
+      })
+      // 用户B为普通成员
+      await pb.collection('chat_group_members').create({
+        group_id: group.id,
+        user_id: application.user_b_id,
+        member_role: 1,  // 普通成员
+        join_time: now,
+        is_active: 1
+      })
+
+      // 4. 发送群系统消息（灰色居中，message_type=5）
+      // 为每个成员发送一条系统消息（这样每个人都能看到未读提示）
+      const systemContent = '您已加入沟通群'
+      const members = [application.matchmaker_id, application.user_a_id, application.user_b_id]
+      for (const memberId of members) {
+        await pb.collection('messages').create({
+          group_id: group.id,
+          sender_id: memberId,
+          message_type: 6,  // 6=系统消息
+          content: systemContent,
+          is_read: false,
+          send_time: now
+        })
+      }
+
+      console.log('✅ 会话和群组创建成功:', { sessionId: session.id, groupId: group.id })
+    } catch (error) {
+      console.error('创建会话和群组失败:', error)
+      throw error
+    }
+  }
+
   // 接受邀请（用户调用）
   // 逻辑：只更新当前用户的状态，application_status 在双方都操作后才更新
+  // 双方都接受后，自动创建会话和群组
   const acceptInvitation = async (applicationId: string, userId: string, userName: string) => {
     try {
       // 获取申请记录
@@ -294,14 +375,22 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
       await pb.collection('matchmaker_applications').update(applicationId, updateData)
 
       // 给红娘发送通知
+      const now1 = new Date().toISOString()
       await pb.collection('notifications').create({
         sender_id: userId,
         user_id: application.matchmaker_id,
         notification_type: 1,
         related_id: applicationId,
         content: `${userName}已接收匹配邀请`,
-        is_read: false
+        is_read: false,
+        created: now1,
+        updated: now1
       })
+
+      // 如果双方都接受了，创建会话和群组
+      if (finalA === 1 && finalB === 1) {
+        await createSessionAndGroups(application)
+      }
     } catch (error) {
       console.error('接受邀请失败:', error)
       throw error
@@ -344,13 +433,16 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
       await pb.collection('matchmaker_applications').update(applicationId, updateData)
 
       // 给红娘发送通知
+      const now2 = new Date().toISOString()
       await pb.collection('notifications').create({
         sender_id: userId,
         user_id: application.matchmaker_id,
         notification_type: 2,
         related_id: applicationId,
         content: `${userName}拒绝匹配邀请`,
-        is_read: false
+        is_read: false,
+        created: now2,
+        updated: now2
       })
     } catch (error) {
       console.error('拒绝邀请失败:', error)
@@ -361,16 +453,18 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
   // 标记通知为已读
   const markAsRead = async (notificationId: string) => {
     try {
+      const now = new Date().toISOString()
       await pb.collection('notifications').update(notificationId, {
         is_read: true,
-        read_time: new Date().toISOString()
+        read_time: now,
+        updated: now
       })
     } catch (error) {
       console.error('标记通知已读失败:', error)
     }
   }
 
-  // 加载用户的收件箱（追加模式，不覆盖已有数据）
+  // 加载用户的收件箱（清空旧数据后重新加载）
   const loadInboxNotifications = async (userId: string) => {
     try {
       const records = await pb.collection('notifications').getFullList({
@@ -381,19 +475,14 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
       const userIds = records.flatMap(r => [r.sender_id, r.user_id])
       const userMap = await batchGetUsers(userIds)
       const newItems = records.map(r => convertNotification(r, userMap))
-      // 追加不重复的记录
-      const existingIds = new Set(notifications.value.map(n => n.id))
-      for (const item of newItems) {
-        if (!existingIds.has(item.id)) {
-          notifications.value.push(item)
-        }
-      }
+      // 清空旧数据，直接替换（避免切换用户时数据残留）
+      notifications.value = newItems
     } catch (error) {
       console.error('加载收件箱失败:', error)
     }
   }
 
-  // 加载用户的发件箱（追加模式，不覆盖已有数据）
+  // 加载用户的发件箱（清空旧数据后重新加载）
   const loadSentNotifications = async (userId: string) => {
     try {
       const records = await pb.collection('notifications').getFullList({
@@ -404,13 +493,8 @@ export const useMatchmakingStore = defineStore('matchmaking', () => {
       const userIds = records.flatMap(r => [r.sender_id, r.user_id])
       const userMap = await batchGetUsers(userIds)
       const newItems = records.map(r => convertNotification(r, userMap))
-      // 追加不重复的记录
-      const existingIds = new Set(notifications.value.map(n => n.id))
-      for (const item of newItems) {
-        if (!existingIds.has(item.id)) {
-          notifications.value.push(item)
-        }
-      }
+      // 清空旧数据，直接替换（避免切换用户时数据残留）
+      notifications.value = newItems
     } catch (error) {
       console.error('加载发件箱失败:', error)
     }
